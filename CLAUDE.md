@@ -1,0 +1,1 @@
+cd ~/Projects/bukapilot && git checkout my-mods && pbpaste > CLAUDE.md && cat CLAUDE.md
