@@ -27,6 +27,7 @@ from openpilot.system.hardware import HARDWARE, KA2
 from openpilot.selfdrive.controls.lib.alc_helper import ALCHelper
 from openpilot.selfdrive.controls.lib.stop_alert import StopAlert
 from openpilot.common.mod_params import get_bool_safe
+from openpilot.selfdrive.controls.lib.nudgeless import NudgelessMonitor
 
 REPLAY = "REPLAY" in os.environ
 SIMULATION = "SIMULATION" in os.environ
@@ -108,6 +109,8 @@ class SelfdriveD:
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
     self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
     self.stop_alert = StopAlert()
+    self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
+    self.nudgeless_monitor = NudgelessMonitor()
 
     car_recognized = self.CP.brand != 'mock'
 
@@ -277,19 +280,31 @@ class SelfdriveD:
     self.alc_active = self.alc_helper.update(CS, self.sm['modelV2'].meta.laneChangeState, self.active)
 
     # Handle lane change
-    if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange and self.alc_active:
-      direction = self.sm['modelV2'].meta.laneChangeDirection
+    meta = self.sm['modelV2'].meta
+    # my-mods NudgelessLaneChange: track state for alerts; alert if BSM cancelled a lane change
+    if self.nudgeless_monitor.update(self.nudgeless_enabled, CS.leftBlinker != CS.rightBlinker, meta.laneChangeState,
+                                     meta.laneChangeDirection, CS.leftBlindspot, CS.rightBlindspot):
+      self.events.add(EventName.laneChangeAbortedBlindspot)
+    nudgeless_alert = self.nudgeless_monitor.show_nudgeless_alert(self.nudgeless_enabled, CS.vEgo)
+
+    if meta.laneChangeState == LaneChangeState.preLaneChange and self.alc_active:
+      direction = meta.laneChangeDirection
       if (CS.leftBlindspot and direction == LaneChangeDirection.left) or \
          (CS.rightBlindspot and direction == LaneChangeDirection.right):
         self.events.add(EventName.laneChangeBlocked)
+      elif nudgeless_alert:
+        self.events.add(EventName.nudgelessLaneChange)
       else:
         if direction == LaneChangeDirection.left:
           self.events.add(EventName.preLaneChangeLeft)
         else:
           self.events.add(EventName.preLaneChangeRight)
-    elif self.sm['modelV2'].meta.laneChangeState in (LaneChangeState.laneChangeStarting,
-                                                    LaneChangeState.laneChangeFinishing) and self.alc_active:
-      self.events.add(EventName.laneChange)
+    elif meta.laneChangeState in (LaneChangeState.laneChangeStarting,
+                                  LaneChangeState.laneChangeFinishing) and self.alc_active:
+      if self.nudgeless_enabled:
+        self.events.add(EventName.nudgelessLaneChange)  # "Changing Lanes" + live BSM state
+      else:
+        self.events.add(EventName.laneChange)
 
     for i, pandaState in enumerate(self.sm['pandaStates']):
       # All pandas must match the list of safetyConfigs, and if outside this list, must be silent or noOutput
@@ -575,6 +590,7 @@ class SelfdriveD:
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
+      self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
       time.sleep(0.1)

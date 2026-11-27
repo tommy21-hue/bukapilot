@@ -133,6 +133,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     audioFeedback @97;
     blinkerSteerRequired @99;
     stopAheadBrake @100;
+    nudgelessLaneChange @101;
+    laneChangeAbortedBlindspot @102;
 
     soundsUnavailableDEPRECATED @47;
   }

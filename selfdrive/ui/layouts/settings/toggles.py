@@ -37,6 +37,12 @@ DESCRIPTIONS = {
     "while openpilot is engaged and the car is not slowing. Alert only: it never brakes for you. " +
     "Quiet when a car ahead is detected."
   ),
+  "NudgelessLaneChange": tr_noop(
+    "Needs Auto Lane Change on. At 60 km/h or more, the lane change starts by itself 1 second after you " +
+    "signal, if the car's blind spot monitor is clear on that side for that whole second. Cancels and asks you " +
+    "to take over if the blind spot monitor sees a car while changing. One lane change per signal. " +
+    "Below 60 km/h you still nudge the wheel."
+  ),
 }
 
 
@@ -102,10 +108,16 @@ class TogglesLayout(Widget):
         "warning.png",
         False,
       ),
+      "NudgelessLaneChange": (
+        lambda: tr("Nudgeless Lane Change"),
+        DESCRIPTIONS["NudgelessLaneChange"],
+        "chffr_wheel.png",
+        False,
+      ),
     }
 
     # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
-    for mod_param in ("StopAlert",):
+    for mod_param in ("StopAlert", "NudgelessLaneChange"):
       if not param_known(mod_param, self._params):
         self._toggle_defs.pop(mod_param, None)
 

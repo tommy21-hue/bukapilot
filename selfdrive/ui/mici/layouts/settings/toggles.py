@@ -31,6 +31,7 @@ class TogglesLayoutMici(NavWidget):
     # Widgets are only created for known Params: BigParamControl reads its Param on creation.
     mod_toggles = [(p, BigParamControl(text, p)) for p, text in (
       ("StopAlert", "stop ahead alert"),
+      ("NudgelessLaneChange", "nudgeless lane change"),
     ) if param_known(p)]
 
     self._scroller = Scroller([

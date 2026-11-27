@@ -254,6 +254,20 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.4)
 
 
+def nudgeless_lane_change_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  # my-mods NudgelessLaneChange: show direction and the car's own BSM state for that side
+  meta = sm['modelV2'].meta
+  left = meta.laneChangeDirection == log.LaneChangeDirection.left
+  side = "Left" if left else "Right"
+  blindspot = CS.leftBlindspot if left else CS.rightBlindspot
+  starting = meta.laneChangeState == log.LaneChangeState.preLaneChange
+  return Alert(
+    f"{'Lane Change ' + side + ' Starting' if starting else 'Changing Lanes ' + side}",
+    f"{side} Blind Spot: {'CAR DETECTED' if blindspot else 'Clear'}",
+    AlertStatus.userPrompt if blindspot else AlertStatus.normal, AlertSize.mid,
+    Priority.LOW, VisualAlert.none, AudibleAlert.none, .1)
+
+
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   first_word = 'Recalibrating' if sm['liveCalibration'].calStatus == log.LiveCalibrationData.Status.recalibrating else 'Calibrating'
   return Alert(
@@ -618,6 +632,19 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "",
       AlertStatus.normal, AlertSize.small,
       Priority.LOW, VisualAlert.none, AudibleAlert.none, .1),
+  },
+
+  # my-mods NudgelessLaneChange
+  EventName.nudgelessLaneChange: {
+    ET.WARNING: nudgeless_lane_change_alert,
+  },
+
+  EventName.laneChangeAbortedBlindspot: {
+    ET.WARNING: Alert(
+      "Take Control",
+      "Lane Change Cancelled: Car in Blind Spot",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.HIGH, VisualAlert.steerRequired, AudibleAlert.promptRepeat, 3.),
   },
 
   EventName.steerSaturated: {

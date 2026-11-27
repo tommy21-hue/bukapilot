@@ -4,6 +4,8 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.nav.nav_desire import navigation_desire, navigation_suppresses_alc
+from openpilot.selfdrive.controls.lib.nudgeless import NudgelessTimer
+from openpilot.common.mod_params import get_bool_safe
 from numpy import clip
 from enum import Enum, auto
 import time
@@ -58,6 +60,12 @@ class DesireHelper:
     self.is_alc_enabled = Params().get_bool("IsAlcEnabled")
     self.blinker_below_lane_change_speed = False
     self._last_final_desire_log_key: tuple | None = None
+    # my-mods: nudgeless lane change (see nudgeless.py)
+    self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange")
+    self.nudgeless_timer = NudgelessTimer()
+    self.nudgeless_used = False      # a lane change already started this blinker; cycle the blinker for another
+    self.bsm_abort_latched = False   # BSM cancelled a lane change; wait for the blinker to go off
+    self.param_frame = 0
 
   @staticmethod
   def get_lane_change_direction(CS):
@@ -86,6 +94,9 @@ class DesireHelper:
 
   def update(self, carstate, lateral_active, lane_change_prob, md=None):
     current_time = time.monotonic()
+    self.param_frame += 1
+    if self.param_frame % int(1. / DT_MDL) == 0:
+      self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange")
     one_blinker = (leftBlinker := carstate.leftBlinker) != (rightBlinker := carstate.rightBlinker)
     below_lane_change_speed = carstate.vEgo < LANE_CHANGE_SPEED_MIN
 
@@ -97,16 +108,29 @@ class DesireHelper:
 
     nav_allowed = lateral_active and Params().get_bool("NavDesiresAllowed")
     nav_suppresses_alc = nav_allowed and navigation_suppresses_alc(carstate, lateral_active)
-    ready_for_lane_change = lateral_active and self.is_alc_enabled and self.lane_change_timer <= LANE_CHANGE_TIME_MAX and not carstate.lkaDisabled and not nav_suppresses_alc
+    ready_for_lane_change = (lateral_active and self.is_alc_enabled and self.lane_change_timer <= LANE_CHANGE_TIME_MAX
+                             and not carstate.lkaDisabled and not nav_suppresses_alc)
 
     if one_blinker and self.prev_blinker is None:
       self.blinker_below_lane_change_speed = below_lane_change_speed # Check if blinker was on below lane change speed
     elif not one_blinker:
       self.blinker_below_lane_change_speed = False
 
+    if not one_blinker:
+      self.nudgeless_used = False
+      self.bsm_abort_latched = False
+
     if not ready_for_lane_change:
       self.lane_change_state = LaneChangeState.off
       self.lane_change_direction = LaneChangeDirection.none
+
+    # my-mods nudgeless: BSM sees a car on that side while moving across -> cancel the lane change.
+    # The desire drops to none and selfdrived shows a take-over alert (BsmAbortDetector).
+    elif self.nudgeless_enabled and self.lane_change_state == LaneChangeState.laneChangeStarting and blindspot_detected:
+      self.lane_change_state = LaneChangeState.off
+      self.lane_change_direction = LaneChangeDirection.none
+      self.bsm_abort_latched = True
+      self.nudgeless_timer.reset()
 
     # If blinker off/blinker direction change during Assisted Lane Change, finish the lane change.
     elif self.lane_change_state == LaneChangeState.laneChangeStarting and (not one_blinker or blinker_dir_changed):
@@ -126,8 +150,10 @@ class DesireHelper:
                                and not self.is_road_edge_blinker(md, rightBlinker, leftBlinker))
 
       # LaneChangeState.off
-      if self.lane_change_state == LaneChangeState.off and can_start_lane_change and not self.blinker_below_lane_change_speed:
+      if (self.lane_change_state == LaneChangeState.off and can_start_lane_change and not self.blinker_below_lane_change_speed
+          and not self.bsm_abort_latched):
         self.lane_change_state = LaneChangeState.preLaneChange
+        self.nudgeless_timer.reset()
         self.lane_change_ll_prob = 1.0
         # Initialize lane change direction to prevent UI alert flicker
         self.lane_change_direction = self.get_lane_change_direction(carstate)
@@ -141,10 +167,16 @@ class DesireHelper:
                          (((steering_torque := carstate.steeringTorque) > 0 and self.lane_change_direction == LaneChangeDirection.left) or
                           (steering_torque < 0 and self.lane_change_direction == LaneChangeDirection.right))
 
+        if blinker_dir_changed:
+          self.nudgeless_timer.reset()
+        nudgeless_ready = (self.nudgeless_timer.update(self.nudgeless_enabled, carstate.vEgo, blindspot_detected)
+                           and not self.nudgeless_used)
+
         if not can_start_lane_change:
           self.lane_change_state = LaneChangeState.off
-        elif torque_applied and not blindspot_detected:
+        elif (torque_applied or nudgeless_ready) and not blindspot_detected:
           self.lane_change_state = LaneChangeState.laneChangeStarting
+          self.nudgeless_used = True  # one automatic lane change per blinker (a nudge still works for more)
 
       # LaneChangeState.laneChangeStarting
       elif self.lane_change_state == LaneChangeState.laneChangeStarting:
@@ -219,10 +251,10 @@ class DesireHelper:
       final_name != "none" or offered_name != "none" or source.startswith("nav_blocked")
     ):
       cloudlog.warning(
-        f"desire_final={final_name} source={source} nav_offered={offered_name} "
-        f"base={base_name} alc_state={self.lane_change_state} "
-        f"nav_took_over={int(nav_took_over)} nav_changed={nav_changed} "
-        f"blinker={int(one_blinker)} "
+        f"desire_final={final_name} source={source} nav_offered={offered_name} " +
+        f"base={base_name} alc_state={self.lane_change_state} " +
+        f"nav_took_over={int(nav_took_over)} nav_changed={nav_changed} " +
+        f"blinker={int(one_blinker)} " +
         f"lateral={int(lateral_active)} keep_pulse_suppressed={int(keep_pulse_suppressed)}"
       )
       self._last_final_desire_log_key = log_key
