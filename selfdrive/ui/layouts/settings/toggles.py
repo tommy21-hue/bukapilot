@@ -60,8 +60,8 @@ DESCRIPTIONS = {
   ),
   "TurnDesireSpeed": tr_noop("Turn desires work below this speed."),
   "ShowBlindspot": tr_noop(
-    "Glow on the left or right edge of the driving screen when the car's blind spot monitor sees a vehicle. " +
-    "Amber normally, red if your turn signal is on toward it."
+    "KA2 light bars: while the car's blind spot monitor sees a vehicle, the bar on that side turns amber and " +
+    "the other bar keeps its normal colour. Kommu warnings, take-over alerts and faults always take priority."
   ),
 }
 
@@ -153,7 +153,7 @@ class TogglesLayout(Widget):
         False,
       ),
       "ShowBlindspot": (
-        lambda: tr("Show Blind Spot Indicators"),
+        lambda: tr("Blind Spot on Light Bars"),
         DESCRIPTIONS["ShowBlindspot"],
         "warning.png",
         False,
