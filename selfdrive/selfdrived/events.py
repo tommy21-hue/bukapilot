@@ -678,7 +678,16 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   },
 
   # StopAlert toggle: model plans a stop ahead but the car isn't slowing. Alert only, no control.
+  # Silent by default; stopAheadBrakeSound is used instead when StopAlertSound is on.
   EventName.stopAheadBrake: {
+    ET.WARNING: Alert(
+      "Stop Ahead – Brake",
+      "Car is not slowing for predicted stop",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.none, 1.),
+  },
+
+  EventName.stopAheadBrakeSound: {
     ET.WARNING: Alert(
       "Stop Ahead – Brake",
       "Car is not slowing for predicted stop",

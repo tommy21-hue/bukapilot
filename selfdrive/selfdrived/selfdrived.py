@@ -25,7 +25,7 @@ from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware import HARDWARE, KA2
 
 from openpilot.selfdrive.controls.lib.alc_helper import ALCHelper
-from openpilot.selfdrive.controls.lib.stop_alert import StopAlert
+from openpilot.selfdrive.controls.lib.stop_alert import StopAlert, stop_alert_event
 from openpilot.common.mod_params import get_bool_safe, get_int_safe
 from openpilot.selfdrive.controls.lib.turn_desire import TurnDesire, TooTightDetector, TURN_DESIRE_SPEED_DEFAULT
 from opendbc.car.byd.values import CarControllerParams as BydCarControllerParams
@@ -110,6 +110,7 @@ class SelfdriveD:
     self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
     self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
+    self.stop_alert_sound = get_bool_safe("StopAlertSound", self.params)
     self.stop_alert = StopAlert()
     self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
     self.nudgeless_monitor = NudgelessMonitor()
@@ -439,7 +440,7 @@ class SelfdriveD:
     if self.stop_alert.update(self.stop_alert_enabled, self.enabled, CS.vEgo, CS.aEgo, CS.brakePressed,
                               self.sm['radarState'].leadOne.status, self.sm.valid['modelV2'],
                               list(md.velocity.x), list(md.velocity.t)) and not self.CP.notCar:
-      self.events.add(EventName.stopAheadBrake)
+      self.events.add(stop_alert_event(self.stop_alert_sound))
 
     # GPS checks
     gps_ok = self.sm.recv_frame[self.gps_location_service] > 0 and (self.sm.frame - self.sm.recv_frame[self.gps_location_service]) * DT_CTRL < 2.0
@@ -615,6 +616,7 @@ class SelfdriveD:
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
+      self.stop_alert_sound = get_bool_safe("StopAlertSound", self.params)
       self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
       self.turn_desires_enabled = get_bool_safe("TurnDesires", self.params)
       self.turn_desire_speed = get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT, self.params)

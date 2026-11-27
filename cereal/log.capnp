@@ -137,6 +137,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     laneChangeAbortedBlindspot @102;
     turnDesire @103;
     turnTooSharp @104;
+    stopAheadBrakeSound @105;
 
     soundsUnavailableDEPRECATED @47;
   }

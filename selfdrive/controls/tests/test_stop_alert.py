@@ -1,8 +1,9 @@
 import numpy as np
 
 from openpilot.common.realtime import DT_CTRL
+from cereal import log
 from openpilot.selfdrive.controls.lib.stop_alert import (
-  StopAlert, model_plans_stop, MODEL_PLAN_LEN, STOP_ALERT_ON_TIME, STOP_ALERT_OFF_TIME,
+  StopAlert, model_plans_stop, stop_alert_event, MODEL_PLAN_LEN, STOP_ALERT_ON_TIME, STOP_ALERT_OFF_TIME,
 )
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
@@ -94,3 +95,8 @@ class TestStopAlert:
     sa = StopAlert()
     assert run(sa, ON_FRAMES)
     assert not run(sa, 1, engaged=False)
+
+
+def test_silent_unless_sound_setting_on():
+  assert stop_alert_event(False) == log.OnroadEvent.EventName.stopAheadBrake
+  assert stop_alert_event(True) == log.OnroadEvent.EventName.stopAheadBrakeSound

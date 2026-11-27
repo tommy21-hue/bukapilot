@@ -38,6 +38,7 @@ DESCRIPTIONS = {
     "while openpilot is engaged and the car is not slowing. Alert only: it never brakes for you. " +
     "Quiet when a car ahead is detected."
   ),
+  "StopAlertSound": tr_noop("Also chime for the Stop Ahead alert. Off: the alert is visual only."),
   "NudgelessLaneChange": tr_noop(
     "Needs Auto Lane Change on. At 60 km/h or more, the lane change starts by itself 1 second after you " +
     "signal, if the car's blind spot monitor is clear on that side for that whole second. Cancels and asks you " +
@@ -127,6 +128,12 @@ class TogglesLayout(Widget):
         "warning.png",
         False,
       ),
+      "StopAlertSound": (
+        lambda: tr("Stop Ahead Alert Sound"),
+        DESCRIPTIONS["StopAlertSound"],
+        "warning.png",
+        False,
+      ),
       "NudgelessLaneChange": (
         lambda: tr("Nudgeless Lane Change"),
         DESCRIPTIONS["NudgelessLaneChange"],
@@ -154,7 +161,7 @@ class TogglesLayout(Widget):
     }
 
     # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
-    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze", "TurnDesires", "ShowBlindspot"):
+    for mod_param in ("StopAlert", "StopAlertSound", "NudgelessLaneChange", "DMWiderGaze", "TurnDesires", "ShowBlindspot"):
       if not param_known(mod_param, self._params):
         self._toggle_defs.pop(mod_param, None)
 

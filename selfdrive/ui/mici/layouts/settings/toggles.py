@@ -48,6 +48,7 @@ class TogglesLayoutMici(NavWidget):
     # Widgets are only created for known Params: BigParamControl reads its Param on creation.
     mod_toggles = [(p, BigParamControl(text, p)) for p, text in (
       ("StopAlert", "stop ahead alert"),
+      ("StopAlertSound", "stop ahead alert sound"),
       ("NudgelessLaneChange", "nudgeless lane change"),
       ("DMWiderGaze", "wider dm gaze zone"),
       ("TurnDesires", "turn desires"),

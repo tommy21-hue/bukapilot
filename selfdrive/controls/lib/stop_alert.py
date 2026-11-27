@@ -10,6 +10,7 @@ conditional_experimental_mode.py uses.
 """
 import numpy as np
 
+from cereal import log
 from openpilot.common.constants import CV
 from openpilot.common.realtime import DT_CTRL
 
@@ -20,6 +21,11 @@ STOP_ALERT_NOT_SLOWING_ACCEL = -0.5  # m/s^2; car decelerating harder than this 
 STOP_ALERT_ON_TIME = 0.3             # s the condition must hold before alerting (filters model flicker)
 STOP_ALERT_OFF_TIME = 0.5            # s the condition must be gone before the alert clears (no repeat chimes)
 MODEL_PLAN_LEN = 33                  # ModelConstants.IDX_N
+
+
+def stop_alert_event(sound_on: bool):
+  """Silent unless the StopAlertSound setting is on."""
+  return log.OnroadEvent.EventName.stopAheadBrakeSound if sound_on else log.OnroadEvent.EventName.stopAheadBrake
 
 
 def model_plans_stop(velocity_x, t, horizon_s=STOP_ALERT_HORIZON_S, stop_speed=STOP_ALERT_PLAN_STOP_SPEED) -> bool:
