@@ -628,6 +628,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.LOW, VisualAlert.steerRequired, AudibleAlert.promptRepeat, 2.),
   },
 
+  # StopAlert toggle: model plans a stop ahead but the car isn't slowing. Alert only, no control.
+  EventName.stopAheadBrake: {
+    ET.WARNING: Alert(
+      "Stop Ahead – Brake",
+      "Car is not slowing for predicted stop",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.prompt, 1.),
+  },
+
   # Thrown when the fan is driven at >50% but is not rotating
   EventName.fanMalfunction: {
     ET.PERMANENT: NormalPermanentAlert("Fan Malfunction", "Likely Hardware Issue"),

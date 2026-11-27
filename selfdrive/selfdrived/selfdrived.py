@@ -25,6 +25,8 @@ from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware import HARDWARE, KA2
 
 from openpilot.selfdrive.controls.lib.alc_helper import ALCHelper
+from openpilot.selfdrive.controls.lib.stop_alert import StopAlert
+from openpilot.common.mod_params import get_bool_safe
 
 REPLAY = "REPLAY" in os.environ
 SIMULATION = "SIMULATION" in os.environ
@@ -104,6 +106,8 @@ class SelfdriveD:
     self.is_metric = self.params.get_bool("IsMetric")
     self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
+    self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
+    self.stop_alert = StopAlert()
 
     car_recognized = self.CP.brand != 'mock'
 
@@ -405,6 +409,13 @@ class SelfdriveD:
     if (planner_fcw or model_fcw) and not self.CP.notCar:
       self.events.add(EventName.fcw)
 
+    # StopAlert: model plans a stop ahead (red light / stop sign) but the car isn't slowing. Alert only.
+    md = self.sm['modelV2']
+    if self.stop_alert.update(self.stop_alert_enabled, self.enabled, CS.vEgo, CS.aEgo, CS.brakePressed,
+                              self.sm['radarState'].leadOne.status, self.sm.valid['modelV2'],
+                              list(md.velocity.x), list(md.velocity.t)) and not self.CP.notCar:
+      self.events.add(EventName.stopAheadBrake)
+
     # GPS checks
     gps_ok = self.sm.recv_frame[self.gps_location_service] > 0 and (self.sm.frame - self.sm.recv_frame[self.gps_location_service]) * DT_CTRL < 2.0
     if not gps_ok and self.sm['livePose'].inputsOK and (self.distance_traveled > 1500):
@@ -563,6 +574,7 @@ class SelfdriveD:
       self.is_metric = self.params.get_bool("IsMetric")
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
+      self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
       time.sleep(0.1)

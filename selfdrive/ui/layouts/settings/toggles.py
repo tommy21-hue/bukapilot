@@ -8,6 +8,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.common.mod_params import param_known
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -31,6 +32,11 @@ DESCRIPTIONS = {
   'RecordFront': tr_noop("Upload data from the driver facing camera and help improve the driver monitoring algorithm."),
   "IsMetric": tr_noop("Display speed in km/h instead of mph."),
   "RecordAudio": tr_noop("Record and store microphone audio while driving. The audio will be included in the dashcam video in comma connect."),
+  "StopAlert": tr_noop(
+    "Chime and show \"Stop Ahead – Brake\" when the driving model predicts a stop ahead (red light or stop sign) " +
+    "while openpilot is engaged and the car is not slowing. Alert only: it never brakes for you. " +
+    "Quiet when a car ahead is detected."
+  ),
 }
 
 
@@ -90,7 +96,18 @@ class TogglesLayout(Widget):
         "metric.png",
         False,
       ),
+      "StopAlert": (
+        lambda: tr("Stop Ahead Alert"),
+        DESCRIPTIONS["StopAlert"],
+        "warning.png",
+        False,
+      ),
     }
+
+    # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
+    for mod_param in ("StopAlert",):
+      if not param_known(mod_param, self._params):
+        self._toggle_defs.pop(mod_param, None)
 
     self._long_personality_setting = multiple_button_item(
       lambda: tr("Driving Personality"),

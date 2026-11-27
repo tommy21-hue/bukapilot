@@ -8,6 +8,7 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import NavWidget
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.common.mod_params import param_known
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -26,12 +27,19 @@ class TogglesLayoutMici(NavWidget):
     record_mic = BigParamControl("record & upload mic audio", "RecordAudio", toggle_callback=restart_needed_callback)
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
 
+    # my-mods toggles: (param, widget). Hidden if the Param isn't compiled into params_pyx.so yet (prebuilt branch).
+    # Widgets are only created for known Params: BigParamControl reads its Param on creation.
+    mod_toggles = [(p, BigParamControl(text, p)) for p, text in (
+      ("StopAlert", "stop ahead alert"),
+    ) if param_known(p)]
+
     self._scroller = Scroller([
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
       ldw_toggle,
       always_on_dm_toggle,
+      *[w for _, w in mod_toggles],
       record_front,
       record_mic,
       enable_openpilot,
@@ -46,6 +54,7 @@ class TogglesLayoutMici(NavWidget):
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
       ("OpenpilotEnabledToggle", enable_openpilot),
+      *mod_toggles,
     )
 
     enable_openpilot.set_enabled(lambda: not ui_state.engaged)
