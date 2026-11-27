@@ -43,6 +43,14 @@ DESCRIPTIONS = {
     "to take over if the blind spot monitor sees a car while changing. One lane change per signal. " +
     "Below 60 km/h you still nudge the wheel."
   ),
+  "DMWiderGaze": tr_noop(
+    "Count side-to-side looks up to 35° (stock 23°) as paying attention, so mirror checks don't trigger " +
+    "driver monitoring warnings. Looking down is unchanged. Applies from the next drive."
+  ),
+  "DMExtraTime": tr_noop(
+    "Add up to 3 seconds before the first driver monitoring warning. Every later warning keeps its stock timing " +
+    "after that. Applies from the next drive."
+  ),
 }
 
 
@@ -114,10 +122,16 @@ class TogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
+      "DMWiderGaze": (
+        lambda: tr("Wider Driver Monitoring Gaze Zone"),
+        DESCRIPTIONS["DMWiderGaze"],
+        "monitoring.png",
+        False,
+      ),
     }
 
     # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
-    for mod_param in ("StopAlert", "NudgelessLaneChange"):
+    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze"):
       if not param_known(mod_param, self._params):
         self._toggle_defs.pop(mod_param, None)
 
@@ -130,6 +144,19 @@ class TogglesLayout(Widget):
       selected_index=self._params.get("LongitudinalPersonality", return_default=True),
       icon="speed_limit.png"
     )
+
+    # my-mods: DMExtraTime selector (index == extra seconds), only if the Param is compiled in
+    self._dm_extra_time_setting = None
+    if param_known("DMExtraTime", self._params):
+      self._dm_extra_time_setting = multiple_button_item(
+        lambda: tr("Extra Time Before DM Warning"),
+        lambda: tr(DESCRIPTIONS["DMExtraTime"]),
+        buttons=[lambda: tr("Off"), lambda: "+1 s", lambda: "+2 s", lambda: "+3 s"],
+        button_width=255,
+        callback=lambda idx: self._params.put("DMExtraTime", idx),
+        selected_index=self._params.get("DMExtraTime", return_default=True) or 0,
+        icon="monitoring.png"
+      )
 
     self._toggles = {}
     self._locked_toggles = set()
@@ -163,6 +190,8 @@ class TogglesLayout(Widget):
       # insert longitudinal personality after NDOG toggle
       if param == "DisengageOnAccelerator":
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
+      if param == "DMWiderGaze" and self._dm_extra_time_setting is not None:
+        self._toggles["DMExtraTime"] = self._dm_extra_time_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)

@@ -23,8 +23,15 @@ EventName = log.OnroadEvent.EventName
 #  We recommend that you do not change these numbers from the defaults.
 # ******************************************************************************************
 
+# my-mods driver monitoring options (Params DMWiderGaze, DMExtraTime). Both can only make DM more
+# tolerant of mirror/side-window glances; no timer is ever made shorter than stock and no alert is removed.
+DM_WIDER_YAW_THRESHOLD = 0.6109        # rad (35 deg) side-to-side look still counted as attentive (stock 0.4020, 23 deg)
+DM_WIDER_YAW_THRESHOLD_SLACK = 0.6981  # rad (40 deg) relaxed version (stock 0.5042, 29 deg)
+DM_EXTRA_TIME_MAX = 3.                 # s, most that may be added before the first warning
+
+
 class DRIVER_MONITOR_SETTINGS:
-  def __init__(self, device_type):
+  def __init__(self, device_type, wider_gaze=False, extra_time=0.):
     self._DT_DMON = DT_DMON
     # ref (page15-16): https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:42018X1947&rid=2
     self._AWARENESS_TIME = 30. # passive wheeltouch total timeout
@@ -87,6 +94,21 @@ class DRIVER_MONITOR_SETTINGS:
 
     self._MAX_TERMINAL_ALERTS = 3  # not allowed to engage after 3 terminal alerts
     self._MAX_TERMINAL_DURATION = int(30 / self._DT_DMON)  # not allowed to engage after 30s of terminal alerts
+
+    self._apply_mods(wider_gaze, extra_time)
+
+  def _apply_mods(self, wider_gaze, extra_time):
+    if wider_gaze:
+      # Side-to-side (yaw) only: looking down (pitch, e.g. at a phone) is unchanged. max() so it can only widen.
+      self._POSE_YAW_THRESHOLD = max(self._POSE_YAW_THRESHOLD, DM_WIDER_YAW_THRESHOLD)
+      self._POSE_YAW_THRESHOLD_SLACK = max(self._POSE_YAW_THRESHOLD_SLACK, DM_WIDER_YAW_THRESHOLD_SLACK)
+      self._POSE_YAW_THRESHOLD_STRICT = self._POSE_YAW_THRESHOLD
+
+    # Extra time ON TOP of stock before the first warning. Only the total grows: the time from the first
+    # warning to the second and to the final alert (the *_TILL_TERMINAL values) stays exactly stock.
+    extra = float(np.clip(extra_time, 0., DM_EXTRA_TIME_MAX))
+    self._DISTRACTED_TIME += extra
+    self._AWARENESS_TIME += extra
 
 class DistractedType:
 

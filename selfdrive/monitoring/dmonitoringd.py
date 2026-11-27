@@ -2,7 +2,8 @@
 import cereal.messaging as messaging
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process
-from openpilot.selfdrive.monitoring.helpers import DriverMonitoring
+from openpilot.selfdrive.monitoring.helpers import DriverMonitoring, DRIVER_MONITOR_SETTINGS
+from openpilot.common.mod_params import get_bool_safe, get_int_safe
 from openpilot.system.hardware import HARDWARE
 
 KA2_DM_MIN_HZ = 5.0
@@ -16,7 +17,11 @@ def dmonitoringd_thread():
   pm = messaging.PubMaster(['driverMonitoringState'])
   sm = messaging.SubMaster(['driverStateV2', 'liveCalibration', 'carState', 'selfdriveState', 'modelV2'], poll='driverStateV2')
 
-  DM = DriverMonitoring(rhd_saved=params.get_bool("IsRhdDetected"), always_on=params.get_bool("AlwaysOnDM"))
+  # my-mods: DMWiderGaze / DMExtraTime are read once per drive (dmonitoringd restarts each drive)
+  dm_settings = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type(),
+                                        wider_gaze=get_bool_safe("DMWiderGaze", params),
+                                        extra_time=get_int_safe("DMExtraTime", 0, params))
+  DM = DriverMonitoring(rhd_saved=params.get_bool("IsRhdDetected"), settings=dm_settings, always_on=params.get_bool("AlwaysOnDM"))
   demo_mode = False
   is_ka2 = HARDWARE.get_device_type() == "ka2"
   last_driverstate_t = None

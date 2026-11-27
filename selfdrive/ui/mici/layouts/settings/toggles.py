@@ -32,7 +32,11 @@ class TogglesLayoutMici(NavWidget):
     mod_toggles = [(p, BigParamControl(text, p)) for p, text in (
       ("StopAlert", "stop ahead alert"),
       ("NudgelessLaneChange", "nudgeless lane change"),
+      ("DMWiderGaze", "wider dm gaze zone"),
     ) if param_known(p)]
+    # index == extra seconds before the first driver monitoring warning
+    mod_multi = [BigMultiParamToggle("extra dm warning time", "DMExtraTime", ["off", "+1 s", "+2 s", "+3 s"])] \
+      if param_known("DMExtraTime") else []
 
     self._scroller = Scroller([
       self._personality_toggle,
@@ -41,6 +45,7 @@ class TogglesLayoutMici(NavWidget):
       ldw_toggle,
       always_on_dm_toggle,
       *[w for _, w in mod_toggles],
+      *mod_multi,
       record_front,
       record_mic,
       enable_openpilot,

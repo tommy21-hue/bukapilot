@@ -1,8 +1,10 @@
 import numpy as np
 
 from cereal import log
+from openpilot.common.params import Params
 from openpilot.common.realtime import DT_DMON
-from openpilot.selfdrive.monitoring.helpers import DriverMonitoring, DRIVER_MONITOR_SETTINGS
+from openpilot.selfdrive.monitoring.helpers import DriverMonitoring, DRIVER_MONITOR_SETTINGS, DM_WIDER_YAW_THRESHOLD, \
+  DM_WIDER_YAW_THRESHOLD_SLACK, DM_EXTRA_TIME_MAX
 from openpilot.system.hardware import HARDWARE
 
 EventName = log.OnroadEvent.EventName
@@ -14,9 +16,9 @@ DISTRACTED_SECONDS_TO_RED = dm_settings._DISTRACTED_TIME + 1
 INVISIBLE_SECONDS_TO_ORANGE = dm_settings._AWARENESS_TIME - dm_settings._AWARENESS_PROMPT_TIME_TILL_TERMINAL + 1
 INVISIBLE_SECONDS_TO_RED = dm_settings._AWARENESS_TIME + 1
 
-def make_msg(face_detected, distracted=False, model_uncertain=False):
+def make_msg(face_detected, distracted=False, model_uncertain=False, yaw=0.):
   ds = log.DriverStateV2.new_message()
-  ds.leftDriverData.faceOrientation = [0., 0., 0.]
+  ds.leftDriverData.faceOrientation = [0., yaw, 0.]
   ds.leftDriverData.facePosition = [0., 0.]
   ds.leftDriverData.faceProb = 1. * face_detected
   ds.leftDriverData.leftEyeProb = 1.
@@ -50,8 +52,8 @@ always_true = [True] * int(TEST_TIMESPAN / DT_DMON)
 always_false = [False] * int(TEST_TIMESPAN / DT_DMON)
 
 class TestMonitoring:
-  def _run_seq(self, msgs, interaction, engaged, standstill):
-    DM = DriverMonitoring()
+  def _run_seq(self, msgs, interaction, engaged, standstill, settings=None):
+    DM = DriverMonitoring(settings=settings)
     events = []
     for idx in range(len(msgs)):
       DM._update_states(msgs[idx], [0, 0, 0], 0, engaged[idx], standstill[idx])
@@ -204,3 +206,71 @@ class TestMonitoring:
     assert EventName.driverUnresponsive in \
                               events[int((INVISIBLE_SECONDS_TO_RED-1+DT_DMON*d_status.settings._HI_STD_FALLBACK_TIME+0.1)/DT_DMON)].names
 
+
+
+# ********** my-mods: DMWiderGaze / DMExtraTime **********
+def first_event_time(events, name):
+  return next(i * DT_DMON for i, e in enumerate(events) if name in e.names)
+
+
+class TestMonitoringMods:
+  def test_defaults_are_stock(self):
+    stock = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type())
+    assert stock._POSE_YAW_THRESHOLD == 0.4020
+    assert stock._POSE_YAW_THRESHOLD_SLACK == 0.5042
+    assert stock._DISTRACTED_TIME == 11.
+    assert stock._AWARENESS_TIME == 30.
+
+  def test_wider_gaze_numbers(self):
+    stock = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type())
+    wide = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type(), wider_gaze=True)
+    assert wide._POSE_YAW_THRESHOLD == DM_WIDER_YAW_THRESHOLD > stock._POSE_YAW_THRESHOLD
+    assert wide._POSE_YAW_THRESHOLD_SLACK == DM_WIDER_YAW_THRESHOLD_SLACK > stock._POSE_YAW_THRESHOLD_SLACK
+    assert wide._POSE_YAW_THRESHOLD_STRICT == wide._POSE_YAW_THRESHOLD
+    # looking down (pitch) and every timer untouched
+    for attr in ("_POSE_PITCH_THRESHOLD", "_POSE_PITCH_THRESHOLD_SLACK", "_PITCH_NATURAL_THRESHOLD", "_DISTRACTED_TIME",
+                 "_AWARENESS_TIME", "_DISTRACTED_PRE_TIME_TILL_TERMINAL", "_DISTRACTED_PROMPT_TIME_TILL_TERMINAL"):
+      assert getattr(wide, attr) == getattr(stock, attr), attr
+
+  def test_extra_time_never_shortens_any_stage(self):
+    stock = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type())
+    for extra in (-5, 0, 1, 2, 3, 10):
+      mod = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type(), extra_time=extra)
+      added = mod._DISTRACTED_TIME - stock._DISTRACTED_TIME
+      assert 0. <= added <= DM_EXTRA_TIME_MAX
+      assert mod._AWARENESS_TIME - stock._AWARENESS_TIME == added
+      # warning stages after the first warning keep exactly stock length
+      for attr in ("_DISTRACTED_PRE_TIME_TILL_TERMINAL", "_DISTRACTED_PROMPT_TIME_TILL_TERMINAL",
+                   "_AWARENESS_PRE_TIME_TILL_TERMINAL", "_AWARENESS_PROMPT_TIME_TILL_TERMINAL"):
+        assert getattr(mod, attr) == getattr(stock, attr), attr
+    assert DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type(), extra_time=10)._DISTRACTED_TIME == 14.
+
+  def test_extra_time_shifts_warnings_by_exactly_extra(self):
+    stock_events, _ = self._run(always_distracted)
+    mod_events, _ = self._run(always_distracted, extra_time=3)
+    for name in (EventName.preDriverDistracted, EventName.promptDriverDistracted, EventName.driverDistracted):
+      shift = first_event_time(mod_events, name) - first_event_time(stock_events, name)
+      assert abs(shift - 3.) <= 2 * DT_DMON, name
+    # first warning: ~3 s stock -> ~6 s with +3 s (plus the 0.25 s distraction filter lag in both)
+    assert abs(first_event_time(stock_events, EventName.preDriverDistracted) - 3.) <= 0.5
+    assert abs(first_event_time(mod_events, EventName.preDriverDistracted) - 6.) <= 0.5
+
+  def test_wider_gaze_allows_mirror_check_both_sides(self):
+    for yaw in (-0.55, 0.45):  # ~27-30 deg off centre: beyond stock 23 deg, inside wider 35 deg
+      looking_at_mirror = [make_msg(True, yaw=yaw)] * int(TEST_TIMESPAN / DT_DMON)
+      stock_events, _ = self._run(looking_at_mirror)
+      assert EventName.preDriverDistracted in [n for e in stock_events for n in e.names]
+      wide_events, _ = self._run(looking_at_mirror, wider_gaze=True)
+      names = [n for e in wide_events for n in e.names]
+      assert len(names) == 0, names
+
+  def test_wider_gaze_still_catches_looking_away(self):
+    looking_away = [make_msg(True, yaw=-0.8)] * int(TEST_TIMESPAN / DT_DMON)  # ~50 deg
+    events, _ = self._run(looking_away, wider_gaze=True, extra_time=3)
+    names = [n for e in events for n in e.names]
+    assert EventName.preDriverDistracted in names and EventName.driverDistracted in names
+
+  def _run(self, msgs, wider_gaze=False, extra_time=0):
+    Params().remove("DriverTooDistracted")  # a previous run in the same test may have hit the terminal alert
+    settings = DRIVER_MONITOR_SETTINGS(device_type=HARDWARE.get_device_type(), wider_gaze=wider_gaze, extra_time=extra_time)
+    return TestMonitoring._run_seq(None, msgs, always_false, always_true, always_false, settings=settings)
