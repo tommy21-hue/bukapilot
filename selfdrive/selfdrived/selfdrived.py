@@ -26,7 +26,9 @@ from openpilot.system.hardware import HARDWARE, KA2
 
 from openpilot.selfdrive.controls.lib.alc_helper import ALCHelper
 from openpilot.selfdrive.controls.lib.stop_alert import StopAlert
-from openpilot.common.mod_params import get_bool_safe
+from openpilot.common.mod_params import get_bool_safe, get_int_safe
+from openpilot.selfdrive.controls.lib.turn_desire import TurnDesire, TooTightDetector, TURN_DESIRE_SPEED_DEFAULT
+from opendbc.car.byd.values import CarControllerParams as BydCarControllerParams
 from openpilot.selfdrive.controls.lib.nudgeless import NudgelessMonitor
 
 REPLAY = "REPLAY" in os.environ
@@ -111,6 +113,10 @@ class SelfdriveD:
     self.stop_alert = StopAlert()
     self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
     self.nudgeless_monitor = NudgelessMonitor()
+    self.turn_desires_enabled = get_bool_safe("TurnDesires", self.params)
+    self.turn_desire_speed = get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT, self.params)
+    self.turn_desire = TurnDesire()
+    self.turn_active = False
 
     car_recognized = self.CP.brand != 'mock'
 
@@ -119,6 +125,10 @@ class SelfdriveD:
       self.params.remove("AlphaLongitudinalEnabled")
     if not self.CP.openpilotLongitudinalControl:
       self.params.remove("ExperimentalMode")
+
+    # BYD angle limit for the "turn too tight" alert (read only; limits themselves are not changed)
+    byd_angle = self.CP.brand == "byd" and self.CP.steerControlType == car.CarParams.SteerControlType.angle
+    self.too_tight = TooTightDetector(BydCarControllerParams.STEER_ANGLE_MAX if byd_angle else None, DT_CTRL)
 
     self.CS_prev = car.CarState.new_message()
     self.AM = AlertManager()
@@ -459,8 +469,23 @@ class SelfdriveD:
         self.params.put_nonblocking('LongitudinalPersonality', self.personality)
         self.events.add(EventName.personalityChanged)
 
+    # my-mods turn desires: below the set speed the blinker keeps steering on and the model takes the turn
+    self.turn_active = self.turn_desire.update(self.turn_desires_enabled and self.enabled and not CS.lkaDisabled,
+                                               self.turn_desire_speed, CS.leftBlinker, CS.rightBlinker,
+                                               CS.vEgo) != log.Desire.none
+    if self.turn_active:
+      CC = self.sm['carControl']
+      if self.too_tight.update(True, CC.latActive, CS.vEgo, CC.actuators.steeringAngleDeg,
+                               self.sm['carOutput'].actuatorsOutput.steeringAngleDeg):
+        self.events.add(EventName.turnTooSharp)
+      elif not CS.standstill:
+        self.events.add(EventName.turnDesire)
+    else:
+      self.too_tight.update(False, False, CS.vEgo, 0., 0.)
+
     # Send an alert when turn signal is on (ALC not active or ALC disabled)
-    if self.enabled and not self.active and CS.leftBlinker != CS.rightBlinker and not CS.standstill and not CS.lkaDisabled:
+    if (self.enabled and not self.active and CS.leftBlinker != CS.rightBlinker and not CS.standstill and not CS.lkaDisabled
+        and not self.turn_active):
       self.events.add(EventName.blinkerSteerRequired)
 
   def data_sample(self):
@@ -577,7 +602,7 @@ class SelfdriveD:
     self.update_events(CS)
     if not self.CP.passive and self.initialized:
       self.enabled, self.active = self.state_machine.update(self.events)
-    self.active = self.active and (self.alc_active or CS.leftBlinker == CS.rightBlinker) and not CS.lkaDisabled
+    self.active = self.active and (self.alc_active or self.turn_active or CS.leftBlinker == CS.rightBlinker) and not CS.lkaDisabled
     self.update_alerts(CS)
 
     self.publish_selfdriveState(CS)
@@ -591,6 +616,8 @@ class SelfdriveD:
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.stop_alert_enabled = get_bool_safe("StopAlert", self.params)
       self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange", self.params)
+      self.turn_desires_enabled = get_bool_safe("TurnDesires", self.params)
+      self.turn_desire_speed = get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT, self.params)
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
       time.sleep(0.1)

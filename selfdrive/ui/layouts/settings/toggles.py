@@ -8,7 +8,8 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr, tr_noop
 from openpilot.system.ui.widgets import DialogResult
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.common.mod_params import param_known
+from openpilot.common.mod_params import param_known, get_int_safe
+from openpilot.selfdrive.controls.lib.turn_desire import TURN_DESIRE_SPEED_OPTIONS, TURN_DESIRE_SPEED_DEFAULT, clamp_turn_speed
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
 
@@ -51,6 +52,12 @@ DESCRIPTIONS = {
     "Add up to 3 seconds before the first driver monitoring warning. Every later warning keeps its stock timing " +
     "after that. Applies from the next drive."
   ),
+  "TurnDesires": tr_noop(
+    "Below the speed set below, the turn signal makes openpilot take the turn instead of changing lanes, " +
+    "and steering stays on while signalling. Steering limits are unchanged: the car can only steer gentle " +
+    "turns (about 22 m radius or wider), so most intersection corners will ask you to take control."
+  ),
+  "TurnDesireSpeed": tr_noop("Turn desires work below this speed."),
 }
 
 
@@ -128,10 +135,16 @@ class TogglesLayout(Widget):
         "monitoring.png",
         False,
       ),
+      "TurnDesires": (
+        lambda: tr("Turn Desires"),
+        DESCRIPTIONS["TurnDesires"],
+        "chffr_wheel.png",
+        False,
+      ),
     }
 
     # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
-    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze"):
+    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze", "TurnDesires"):
       if not param_known(mod_param, self._params):
         self._toggle_defs.pop(mod_param, None)
 
@@ -156,6 +169,20 @@ class TogglesLayout(Widget):
         callback=lambda idx: self._params.put("DMExtraTime", idx),
         selected_index=self._params.get("DMExtraTime", return_default=True) or 0,
         icon="monitoring.png"
+      )
+
+    # my-mods: TurnDesireSpeed selector (stores km/h)
+    self._turn_speed_setting = None
+    if param_known("TurnDesireSpeed", self._params):
+      cur = clamp_turn_speed(get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT, self._params))
+      self._turn_speed_setting = multiple_button_item(
+        lambda: tr("Turn Desire Speed"),
+        lambda: tr(DESCRIPTIONS["TurnDesireSpeed"]),
+        buttons=[lambda v=v: f"{v} km/h" for v in TURN_DESIRE_SPEED_OPTIONS],
+        button_width=200,
+        callback=lambda idx: self._params.put("TurnDesireSpeed", TURN_DESIRE_SPEED_OPTIONS[idx]),
+        selected_index=min(range(len(TURN_DESIRE_SPEED_OPTIONS)), key=lambda i: abs(TURN_DESIRE_SPEED_OPTIONS[i] - cur)),
+        icon="speed_limit.png"
       )
 
     self._toggles = {}
@@ -192,6 +219,8 @@ class TogglesLayout(Widget):
         self._toggles["LongitudinalPersonality"] = self._long_personality_setting
       if param == "DMWiderGaze" and self._dm_extra_time_setting is not None:
         self._toggles["DMExtraTime"] = self._dm_extra_time_setting
+      if param == "TurnDesires" and self._turn_speed_setting is not None:
+        self._toggles["TurnDesireSpeed"] = self._turn_speed_setting
 
     self._update_experimental_mode_icon()
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)

@@ -5,7 +5,8 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.nav.nav_desire import navigation_desire, navigation_suppresses_alc
 from openpilot.selfdrive.controls.lib.nudgeless import NudgelessTimer
-from openpilot.common.mod_params import get_bool_safe
+from openpilot.selfdrive.controls.lib.turn_desire import TurnDesire, TURN_DESIRE_SPEED_DEFAULT
+from openpilot.common.mod_params import get_bool_safe, get_int_safe
 from numpy import clip
 from enum import Enum, auto
 import time
@@ -66,6 +67,10 @@ class DesireHelper:
     self.nudgeless_used = False      # a lane change already started this blinker; cycle the blinker for another
     self.bsm_abort_latched = False   # BSM cancelled a lane change; wait for the blinker to go off
     self.param_frame = 0
+    # my-mods: turn desires (see turn_desire.py)
+    self.turn_desire = TurnDesire()
+    self.turn_desires_enabled = get_bool_safe("TurnDesires")
+    self.turn_desire_speed = get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT)
 
   @staticmethod
   def get_lane_change_direction(CS):
@@ -97,6 +102,8 @@ class DesireHelper:
     self.param_frame += 1
     if self.param_frame % int(1. / DT_MDL) == 0:
       self.nudgeless_enabled = get_bool_safe("NudgelessLaneChange")
+      self.turn_desires_enabled = get_bool_safe("TurnDesires")
+      self.turn_desire_speed = get_int_safe("TurnDesireSpeed", TURN_DESIRE_SPEED_DEFAULT)
     one_blinker = (leftBlinker := carstate.leftBlinker) != (rightBlinker := carstate.rightBlinker)
     below_lane_change_speed = carstate.vEgo < LANE_CHANGE_SPEED_MIN
 
@@ -202,7 +209,14 @@ class DesireHelper:
       self.lane_change_timer += DT_MDL
 
     self.prev_blinker = None if not one_blinker else (Dir.LEFT if leftBlinker else Dir.RIGHT)
-    base_desire = DESIRES[self.lane_change_direction][self.lane_change_state]
+    # my-mods turn desires: below the set speed the blinker means "take the turn", never a lane change
+    turn = self.turn_desire.update(self.turn_desires_enabled and lateral_active, self.turn_desire_speed,
+                                   leftBlinker, rightBlinker, carstate.vEgo)
+    if turn != log.Desire.none:
+      self.lane_change_state = LaneChangeState.off
+      self.lane_change_direction = LaneChangeDirection.none
+      self.lane_change_timer = 0.0
+    base_desire = turn if turn != log.Desire.none else DESIRES[self.lane_change_direction][self.lane_change_state]
     self.desire = base_desire
     nav_offered = log.Desire.none
     if nav_allowed:

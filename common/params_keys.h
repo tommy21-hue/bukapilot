@@ -165,6 +165,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"SnoozeUpdate", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
     {"SshEnabled", {PERSISTENT, BOOL}},
     {"StopAlert", {PERSISTENT, BOOL, "0"}},
+    {"TurnDesires", {PERSISTENT, BOOL, "0"}},
+    {"TurnDesireSpeed", {PERSISTENT, INT, "25"}},
     {"TermsVersion", {PERSISTENT, STRING}},
     {"Timezone", {PERSISTENT, STRING}},
     {"TrainingVersion", {PERSISTENT, STRING}},

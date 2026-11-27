@@ -268,6 +268,15 @@ def nudgeless_lane_change_alert(CP: car.CarParams, CS: car.CarState, sm: messagi
     Priority.LOW, VisualAlert.none, AudibleAlert.none, .1)
 
 
+def turn_desire_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  # my-mods TurnDesires
+  return Alert(
+    f"Turning {'Left' if CS.leftBlinker else 'Right'}",
+    "",
+    AlertStatus.normal, AlertSize.small,
+    Priority.LOW, VisualAlert.none, AudibleAlert.none, .1)
+
+
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   first_word = 'Recalibrating' if sm['liveCalibration'].calStatus == log.LiveCalibrationData.Status.recalibrating else 'Calibrating'
   return Alert(
@@ -637,6 +646,19 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   # my-mods NudgelessLaneChange
   EventName.nudgelessLaneChange: {
     ET.WARNING: nudgeless_lane_change_alert,
+  },
+
+  # my-mods TurnDesires
+  EventName.turnDesire: {
+    ET.WARNING: turn_desire_alert,
+  },
+
+  EventName.turnTooSharp: {
+    ET.WARNING: Alert(
+      "Take Control",
+      "Turn Too Sharp for Steering Limit",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.steerRequired, AudibleAlert.promptRepeat, 2.),
   },
 
   EventName.laneChangeAbortedBlindspot: {

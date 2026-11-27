@@ -8,9 +8,26 @@ from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import NavWidget
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.common.mod_params import param_known
+from openpilot.common.mod_params import param_known, get_int_safe
+from openpilot.selfdrive.ui.mici.widgets.button import BigMultiToggle
+from openpilot.selfdrive.controls.lib.turn_desire import TURN_DESIRE_SPEED_OPTIONS, TURN_DESIRE_SPEED_DEFAULT, clamp_turn_speed
 
 PERSONALITY_TO_INT = log.LongitudinalPersonality.schema.enumerants
+
+
+class TurnSpeedParamToggle(BigMultiParamToggle):
+  """my-mods: like BigMultiParamToggle but stores the km/h value, not the option index."""
+  def __init__(self, text: str, param: str):
+    super().__init__(text, param, [f"{v} km/h" for v in TURN_DESIRE_SPEED_OPTIONS])
+
+  def _load_value(self):
+    cur = clamp_turn_speed(get_int_safe(self._param, TURN_DESIRE_SPEED_DEFAULT, self._params))
+    idx = min(range(len(TURN_DESIRE_SPEED_OPTIONS)), key=lambda i: abs(TURN_DESIRE_SPEED_OPTIONS[i] - cur))
+    self.set_value(self._options[idx])
+
+  def _handle_mouse_release(self, mouse_pos):
+    BigMultiToggle._handle_mouse_release(self, mouse_pos)
+    self._params.put_nonblocking(self._param, TURN_DESIRE_SPEED_OPTIONS[self._options.index(self.value)])
 
 
 class TogglesLayoutMici(NavWidget):
@@ -33,10 +50,13 @@ class TogglesLayoutMici(NavWidget):
       ("StopAlert", "stop ahead alert"),
       ("NudgelessLaneChange", "nudgeless lane change"),
       ("DMWiderGaze", "wider dm gaze zone"),
+      ("TurnDesires", "turn desires"),
     ) if param_known(p)]
     # index == extra seconds before the first driver monitoring warning
     mod_multi = [BigMultiParamToggle("extra dm warning time", "DMExtraTime", ["off", "+1 s", "+2 s", "+3 s"])] \
       if param_known("DMExtraTime") else []
+    if param_known("TurnDesireSpeed"):
+      mod_multi.append(TurnSpeedParamToggle("turn desire speed", "TurnDesireSpeed"))
 
     self._scroller = Scroller([
       self._personality_toggle,
