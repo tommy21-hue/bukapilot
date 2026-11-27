@@ -51,6 +51,7 @@ class TogglesLayoutMici(NavWidget):
       ("NudgelessLaneChange", "nudgeless lane change"),
       ("DMWiderGaze", "wider dm gaze zone"),
       ("TurnDesires", "turn desires"),
+      ("ShowBlindspot", "show blind spot indicators"),
     ) if param_known(p)]
     # index == extra seconds before the first driver monitoring warning
     mod_multi = [BigMultiParamToggle("extra dm warning time", "DMExtraTime", ["off", "+1 s", "+2 s", "+3 s"])] \

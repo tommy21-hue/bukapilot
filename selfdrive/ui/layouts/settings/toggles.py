@@ -58,6 +58,10 @@ DESCRIPTIONS = {
     "turns (about 22 m radius or wider), so most intersection corners will ask you to take control."
   ),
   "TurnDesireSpeed": tr_noop("Turn desires work below this speed."),
+  "ShowBlindspot": tr_noop(
+    "Glow on the left or right edge of the driving screen when the car's blind spot monitor sees a vehicle. " +
+    "Amber normally, red if your turn signal is on toward it."
+  ),
 }
 
 
@@ -141,10 +145,16 @@ class TogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
+      "ShowBlindspot": (
+        lambda: tr("Show Blind Spot Indicators"),
+        DESCRIPTIONS["ShowBlindspot"],
+        "warning.png",
+        False,
+      ),
     }
 
     # my-mods toggles: hide any whose Param isn't compiled into params_pyx.so yet (prebuilt branch)
-    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze", "TurnDesires"):
+    for mod_param in ("StopAlert", "NudgelessLaneChange", "DMWiderGaze", "TurnDesires", "ShowBlindspot"):
       if not param_known(mod_param, self._params):
         self._toggle_defs.pop(mod_param, None)
 
